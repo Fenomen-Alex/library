@@ -2,85 +2,123 @@
 
 const mongoose = require('mongoose');
 
-// Define a schema and model for the books
-const bookSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  comments: { type: [String], default: [] }
+const BookSchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    comments: { type: [String], default: [] }
 });
 
-const Book = mongoose.model('Book', bookSchema);
+const Book = mongoose.model('Book', BookSchema);
 
 module.exports = function (app) {
+    app.route('/api/books')
+        .get(async function (req, res) {
+            try {
+                const books = await Book.find({}).lean();
+                const response = books.map(book => ({
+                    _id: book._id,
+                    title: book.title,
+                    commentcount: book.comments.length
+                }));
+                res.json(response);
+            } catch (err) {
+                res.status(500).send(err.message);
+            }
+        })
 
-  app.route('/api/books')
-      .get(async function (req, res) {
-        try {
-          const books = await Book.find({});
-          res.json(books.map(book => ({
-            _id: book._id,
-            title: book.title,
-            commentcount: book.comments.length
-          })));
-        } catch (err) {
-          res.status(500).send(err);
-        }
-      })
+        .post(async function (req, res) {
+            const title = req.body.title;
+            if (!title) {
+                return res.json('missing required field title');  // Change here
+            }
+            const newBook = new Book({ title });
+            try {
+                const savedBook = await newBook.save();
+                res.json({ title: savedBook.title, _id: savedBook._id });
+            } catch (err) {
+                res.status(500).send(err.message);
+            }
+        })
 
-      .post(async function (req, res) {
-        const title = req.body.title;
-        if (!title) {
-          return res.send('missing required field title');
-        }
+        .delete(async function(req, res) {
+            try {
+                await Book.deleteMany({});
+                res.json('complete delete successful');  // Change here
+            } catch (err) {
+                res.status(500).send(err.message);
+            }
+        });
 
-        const newBook = new Book({ title });
-        await newBook.save();
-        res.json({ title: newBook.title, _id: newBook._id });
-      })
+    app.route('/api/books/:id')
+        .get(async function (req, res) {
+            const bookid = req.params.id;
+            if (!mongoose.Types.ObjectId.isValid(bookid)) {
+                return res.json('no book exists');  // Change here
+            }
+            try {
+                const book = await Book.findById(bookid);
+                if (!book) {
+                    return res.json('no book exists');  // Change here
+                }
+                res.json({
+                    _id: book._id,
+                    title: book.title,
+                    comments: book.comments
+                });
+            } catch (err) {
+                console.error("Error in GET /api/books/:id:", err);
+                res.status(500).send(err.message);
+            }
+        })
 
-      .delete(async function(req, res) {
-        await Book.deleteMany({});
-        res.send('complete delete successful');
-      });
+        .post(async function(req, res) {
+            const bookid = req.params.id;
+            const comment = req.body.comment;
 
-  app.route('/api/books/:id')
-      .get(async function (req, res) {
-        const bookid = req.params.id;
-        try {
-          const book = await Book.findById(bookid);
-          if (!book) {
-            return res.send('no book exists');
-          }
-          res.json({ _id: bookid, title: book.title, comments: book.comments });
-        } catch (err) {
-          res.status(500).send(err);
-        }
-      })
+            // Check for the comment field
+            if (!comment) {
+                return res.json('missing required field comment');  // Change here
+            }
 
-      .post(async function(req, res) {
-        const bookid = req.params.id;
-        const comment = req.body.comment;
-        if (!comment) {
-          return res.send('missing required field comment');
-        }
-        try {
-          const book = await Book.findById(bookid);
-          if (!book) {
-            return res.send('no book exists');
-          }
-          book.comments.push(comment);
-          await book.save();
-          res.json({ _id: bookid, title: book.title, comments: book.comments });
-        } catch (err) {
-          res.status(500).send(err);
-        }
-      })
+            // Validate the book ID before querying
+            if (!mongoose.Types.ObjectId.isValid(bookid)) {
+                return res.json('no book exists');  // Change here
+            }
 
-      .delete(async function(req, res) {
-        const bookid = req.params.id;
-        const result = await Book.deleteOne({ _id: bookid });
-        if (result.deletedCount === 0) {
-          return res.send('no book exists');
-        }
-        res.send('delete successful');
-      });
+            try {
+                const book = await Book.findById(bookid);
+                if (!book) {
+                    return res.json('no book exists');  // Change here
+                }
+                book.comments.push(comment);
+                await book.save();
+                res.json({
+                    _id: book._id,
+                    title: book.title,
+                    comments: book.comments
+                });
+            } catch (err) {
+                console.error("Error in POST /api/books/:id:", err);
+                res.status(500).send(err.message);
+            }
+        })
+
+        .delete(async function(req, res) {
+            const bookid = req.params.id;
+
+            // Validate the book ID before querying
+            if (!mongoose.Types.ObjectId.isValid(bookid)) {
+                return res.json('no book exists');  // Change here
+            }
+
+            try {
+                const book = await Book.findByIdAndDelete(bookid);
+                if (!book) {
+                    return res.json('no book exists');  // Change here
+                }
+                res.json('delete successful');  // Change here
+            } catch (err) {
+                console.error("Error in DELETE /api/books/:id:", err);
+                res.status(500).send(err.message);
+            }
+        });
 };
